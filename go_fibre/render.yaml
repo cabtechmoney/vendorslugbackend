@@ -1,0 +1,14 @@
+  - type: web
+    name: vendor-product-service
+    runtime: go
+    rootDir: go_fibre
+    buildCommand: go mod download && go build -o app .
+    startCommand: ./app
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        value: "http://localhost:3000,https://vendor-frontend.onrender.com"
+      # PORT removed — Render injects it
