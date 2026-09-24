@@ -5,4 +5,4 @@ RUN npm install
 COPY . .
 RUN npm run build
 EXPOSE 3000
-CMD ["npx", "next", "start", "-H", "0.0.0.0", "-p", "$PORT"]
+CMD ["sh", "-c", "exec npx next start -H 0.0.0.0 -p \"${PORT:-3000}\""]

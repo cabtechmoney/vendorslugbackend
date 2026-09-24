@@ -50,5 +50,3 @@ services:
         sync: false
       - key: CORS_ORIGINS
         value: "http://localhost:3000,https://vendor-frontend.onrender.com"
-      - key: PORT
-        value: "8081"

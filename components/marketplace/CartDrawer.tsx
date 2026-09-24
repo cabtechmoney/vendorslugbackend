@@ -17,10 +17,11 @@ import { useCart } from '@/contexts/CartContext';
 interface CartDrawerProps {
   isOpen: boolean;
   onClose: () => void;
+  vendorWhatsapp?: string;
 
 }
 
-export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
+export function CartDrawer({ isOpen, onClose, vendorWhatsapp }: CartDrawerProps) {
   const {
     state,
     updateQuantity,
@@ -36,8 +37,25 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const total = getTotal();
 
   const handleWhatsAppCheckout = () => {
-    // Implement checkout logic
-    console.log('Checkout via WhatsApp');
+    const phone = vendorWhatsapp?.replace(/\D/g, '');
+    if (!phone) {
+      window.alert('This vendor has not added a WhatsApp number yet.');
+      return;
+    }
+
+    const orderLines = items.map(
+      (item) => `- ${item.name} x${item.quantity}: ₦${(item.price * item.quantity).toLocaleString()}`,
+    );
+    const message = [
+      'Hello, I would like to place this order:',
+      ...orderLines,
+      '',
+      `Subtotal: ₦${subtotal.toLocaleString()}`,
+      `Delivery: ₦${state.deliveryFee.toLocaleString()}`,
+      `Total: ₦${total.toLocaleString()}`,
+    ].join('\n');
+
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
   };
 
   return (

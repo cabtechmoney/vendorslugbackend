@@ -87,6 +87,7 @@ func main() {
 	}))
 
 	app.Get("/api/products", getProducts)
+	app.Get("/api/products/:id", getProductByID)
 	app.Get("/api/products/:vendor", getProductsByVendor)
 	app.Post("/api/products", authenticate, createProduct)
 	app.Put("/api/products/:id", authenticate, updateProduct)
@@ -140,7 +141,11 @@ func authenticate(c *fiber.Ctx) error {
 		return c.Status(401).JSON(fiber.Map{"error": "Invalid token claims"})
 	}
 
-	c.Locals("user_email", claims["sub"])
+	email, ok := claims["sub"].(string)
+	if !ok || email == "" || claims["type"] != "admin_session" {
+		return c.Status(401).JSON(fiber.Map{"error": "Invalid token claims"})
+	}
+	c.Locals("user_email", email)
 	c.Locals("user_type", claims["type"])
 	return c.Next()
 }
@@ -198,6 +203,43 @@ func getProductsByVendor(c *fiber.Ctx) error {
 	return c.JSON(products)
 }
 
+func getProductByID(c *fiber.Ctx) error {
+	id, err := c.ParamsInt("id")
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid product ID"})
+	}
+
+	var product Product
+	err = db.QueryRow(`
+		SELECT p.id, p.name, COALESCE(p.description, ''), p.price,
+		       COALESCE(p.image_url, ''), COALESCE(p.tag, ''),
+		       COALESCE(p.category, ''), COALESCE(p.is_available, true),
+		       COALESCE(p.vendor_slug, v.slug), COALESCE(p.created_at, now())
+		FROM products p
+		JOIN vendors v ON v.slug = p.vendor_slug OR v.id = p.vendor_id
+		WHERE p.id = $1 AND p.is_available = true AND v.is_active = true
+	`, id).Scan(
+		&product.ID,
+		&product.Name,
+		&product.Description,
+		&product.Price,
+		&product.ImageURL,
+		&product.Tag,
+		&product.Category,
+		&product.IsAvailable,
+		&product.VendorSlug,
+		&product.CreatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return c.Status(404).JSON(fiber.Map{"error": "Product not found"})
+	}
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch product: " + err.Error()})
+	}
+
+	return c.JSON(product)
+}
+
 func createProduct(c *fiber.Ctx) error {
 	var p Product
 	if err := c.BodyParser(&p); err != nil {
@@ -214,10 +256,15 @@ func createProduct(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Vendor slug is required"})
 	}
 
+	merchantEmail := c.Locals("user_email").(string)
 	var vendorExists bool
 	err := db.QueryRow(`
-        SELECT EXISTS(SELECT 1 FROM vendors WHERE slug = $1 AND is_active = true)
-    `, p.VendorSlug).Scan(&vendorExists)
+		SELECT EXISTS(
+			SELECT 1 FROM vendors v
+			JOIN merchants m ON m.id = v.merchant_id
+			WHERE v.slug = $1 AND v.is_active = true AND m.email = $2 AND m.is_active = true
+		)
+	`, p.VendorSlug, merchantEmail).Scan(&vendorExists)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to verify vendor: " + err.Error()})
 	}
@@ -306,9 +353,17 @@ func updateProduct(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "No valid fields provided for update"})
 	}
 
+	merchantEmail := c.Locals("user_email").(string)
 	query = query[:len(query)-2]
-	query += fmt.Sprintf(" WHERE id = $%d", argIdx)
+	query += fmt.Sprintf(`
+		WHERE products.id = $%d
+		AND EXISTS (
+			SELECT 1 FROM vendors v
+			JOIN merchants m ON m.id = v.merchant_id
+			WHERE v.slug = products.vendor_slug AND m.email = $%d AND m.is_active = true
+		)`, argIdx, argIdx+1)
 	args = append(args, id)
+	args = append(args, merchantEmail)
 
 	result, err := db.Exec(query, args...)
 	if err != nil {
@@ -329,7 +384,17 @@ func deleteProduct(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid product ID"})
 	}
 
-	result, err := db.Exec("UPDATE products SET is_available = false WHERE id = $1", id)
+	merchantEmail := c.Locals("user_email").(string)
+	result, err := db.Exec(`
+		UPDATE products
+		SET is_available = false
+		WHERE products.id = $1
+		AND EXISTS (
+			SELECT 1 FROM vendors v
+			JOIN merchants m ON m.id = v.merchant_id
+			WHERE v.slug = products.vendor_slug AND m.email = $2 AND m.is_active = true
+		)
+	`, id, merchantEmail)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to delete product: " + err.Error()})
 	}

@@ -101,11 +101,22 @@ def create_database_tables():
         )
         connection.exec_driver_sql(
             """
-            UPDATE products AS products
-            SET vendor_slug = vendors.slug
-            FROM vendors
-            WHERE products.vendor_slug IS NULL
-              AND products.vendor_id = vendors.id
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name = 'products' AND column_name = 'vendor_id'
+                ) THEN
+                    EXECUTE '
+                        UPDATE products AS products
+                        SET vendor_slug = vendors.slug
+                        FROM vendors
+                        WHERE products.vendor_slug IS NULL
+                          AND products.vendor_id = vendors.id
+                    ';
+                END IF;
+            END $$;
             """
         )
         connection.exec_driver_sql(
@@ -272,6 +283,25 @@ def product_response(product: ProductTable, vendor_slug: str) -> dict:
         "created_at": product.created_at.isoformat() if product.created_at else None,
     }
 
+def get_current_merchant(
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    token = authorization.removeprefix("Bearer ")
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "admin_session":
+            raise jwt.PyJWTError()
+        email = payload.get("sub")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token.")
+    merchant = db.query(MerchantTable).filter(MerchantTable.email == email).first()
+    if not merchant or not merchant.is_active:
+        raise HTTPException(status_code=401, detail="Merchant unavailable.")
+    return merchant
+
 # --- API ROUTES ---
 
 @app.post("/vendors", status_code=status.HTTP_201_CREATED)
@@ -306,7 +336,10 @@ def get_vendor(vendor_slug: str, db: Session = Depends(get_db)):
 
     products = (
         db.query(ProductTable)
-        .filter(ProductTable.vendor_slug == vendor.slug, ProductTable.is_available == True)
+        .filter(
+            ProductTable.is_available == True,
+            ProductTable.vendor_slug == vendor.slug,
+        )
         .all()
     )
     return vendor_response(vendor, products)
@@ -350,7 +383,7 @@ def list_products(vendor_slug: Optional[str] = None, db: Session = Depends(get_d
 @app.get("/products/{product_id}")
 def get_product(product_id: int, db: Session = Depends(get_db)):
     result = db.query(ProductTable, VendorTable).join(
-        VendorTable, ProductTable.vendor_id == VendorTable.id
+        VendorTable, ProductTable.vendor_slug == VendorTable.slug
     ).filter(
         ProductTable.id == product_id,
         ProductTable.is_available.is_(True),
@@ -415,25 +448,6 @@ async def merchant_login(payload: LoginSchema, db: Session = Depends(get_db)):
             "is_active": merchant.is_active,
         }
     }
-
-def get_current_merchant(
-    authorization: Optional[str] = Header(default=None),
-    db: Session = Depends(get_db),
-):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Authentication required.")
-    token = authorization.removeprefix("Bearer ")
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        if payload.get("type") != "admin_session":
-            raise jwt.PyJWTError()
-        email = payload.get("sub")
-    except jwt.PyJWTError:
-        raise HTTPException(status_code=401, detail="Invalid or expired token.")
-    merchant = db.query(MerchantTable).filter(MerchantTable.email == email).first()
-    if not merchant or not merchant.is_active:
-        raise HTTPException(status_code=401, detail="Merchant unavailable.")
-    return merchant
 
 @app.get("/api/auth/me")
 async def get_current_merchant_profile(merchant: MerchantTable = Depends(get_current_merchant)):

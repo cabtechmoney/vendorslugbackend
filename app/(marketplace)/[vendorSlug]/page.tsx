@@ -121,7 +121,11 @@ export default function VendorStorefront() {
         </button>
       )}
 
-      <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
+      <CartDrawer
+        isOpen={isCartOpen}
+        onClose={() => setIsCartOpen(false)}
+        vendorWhatsapp={vendor.whatsapp}
+      />
     </>
   );
 }
