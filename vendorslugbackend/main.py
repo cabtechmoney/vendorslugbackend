@@ -338,7 +338,7 @@ def get_vendor(vendor_slug: str, db: Session = Depends(get_db)):
         db.query(ProductTable)
         .filter(
             ProductTable.is_available == True,
-            ProductTable.vendor_slug == vendor.slug,
+            (ProductTable.vendor_slug == vendor.slug) | (ProductTable.vendor_id == vendor.id),
         )
         .all()
     )
