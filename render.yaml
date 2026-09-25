@@ -1,6 +1,7 @@
 services:
   - type: web
     name: vendor-frontend
+    plan: free
     runtime: node
     rootDir: .
     buildCommand: npm install && npm run build
@@ -15,10 +16,12 @@ services:
 
   - type: web
     name: vendor-backend
+    plan: free
     runtime: python
     rootDir: vendorslugbackend
     buildCommand: pip install --upgrade pip && pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
         value: "3.12.3"
@@ -39,11 +42,15 @@ services:
 
   - type: web
     name: vendor-product-service
+    plan: free
     runtime: go
     rootDir: go_fibre
     buildCommand: go mod download && go build -o app .
     startCommand: ./app
+    healthCheckPath: /health
     envVars:
+      - key: GO_VERSION
+        value: "1.26.4"
       - key: DATABASE_URL
         sync: false
       - key: SECRET_KEY

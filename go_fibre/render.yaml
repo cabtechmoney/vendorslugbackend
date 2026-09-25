@@ -1,5 +1,6 @@
   - type: web
     name: vendor-product-service
+    plan: free
     runtime: go
     rootDir: go_fibre
     buildCommand: go mod download && go build -o app .
