@@ -20,9 +20,11 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL must be set in the backend .env file.")
 
-# Replace asyncpg with psycopg2 if needed (for sync engine)
+# Use the installed synchronous PostgreSQL driver regardless of the provider URL scheme.
 if DATABASE_URL.startswith("postgresql+asyncpg://"):
     DATABASE_URL = DATABASE_URL.replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
+elif DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
 
 engine = create_engine(DATABASE_URL, echo=False)  # set echo=True for debugging
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
