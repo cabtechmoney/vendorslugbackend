@@ -78,6 +78,15 @@ func main() {
 	if corsOrigins == "" {
 		corsOrigins = "http://localhost:3000,http://127.0.0.1:3000,https://your-project.vercel.app"
 	}
+	origins := strings.Split(corsOrigins, ",")
+	for index, origin := range origins {
+		origin = strings.TrimSpace(origin)
+		if origin != "*" && !strings.HasPrefix(origin, "http://") && !strings.HasPrefix(origin, "https://") {
+			origin = "https://" + origin
+		}
+		origins[index] = origin
+	}
+	corsOrigins = strings.Join(origins, ",")
 
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     corsOrigins,

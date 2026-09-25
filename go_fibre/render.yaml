@@ -12,4 +12,5 @@
         sync: false
       - key: CORS_ORIGINS
         value: "http://localhost:3000,https://vendor-frontend.onrender.com"
-      # PORT removed — Render injects it
+      # PORT removed — Render injects it      git add vendorslugbackend/main.py
+    
